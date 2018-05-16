@@ -1,10 +1,10 @@
 # tello-desktop
-Functioning desktop testbed for flying the DJI Tello drone via Gobot.
+A functioning desktop testbed for flying the DJI Tello drone via [Gobot](https://github.com/hybridgroup/gobot).
 
 _Play with this entirely at your own risk - it's not the author's fault if you lose your drone
-or damage it or anything else when using this software._
+or damage it, or anything else, when using this software._
 
-This is an unpolished, but working, utility to try out new features on the dji/tello platform in the Gobot library.
+This is an unpolished, but working, utility to try out features of the dji/tello platform in the Gobot library.
 
 It currently provides 
 * live video via mplayer (must be installed separately)
@@ -33,4 +33,4 @@ If all is OK then you can launch the Tello from the flight controller.  In the d
 * Left Twist - Rotate drone left/right
 * Right Joystick - Conventional movement control, twist not currently used
 
-Once you have landed stop the program with Ctrl-C, some errors will appear - this is normal.
+Once you have landed the drone, stop the program with Ctrl-C, some errors will appear - this is normal.
