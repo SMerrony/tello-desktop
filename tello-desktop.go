@@ -43,6 +43,8 @@ const (
 	moveFwdBkCtrl  = joystick.RightY
 	moveUpDownCtrl = joystick.LeftY
 	turnLRCtrl     = joystick.LeftX
+	bounceCtrl     = joystick.TrianglePress
+	palmLandCtrl   = joystick.L2Press
 )
 
 var (
@@ -112,6 +114,10 @@ func main() {
 			drone.Up(0)
 			drone.Down(0)
 		})
+
+		stick.On(bounceCtrl, func(data interface{}) { drone.Bounce() })
+
+		stick.On(palmLandCtrl, func(data interface{}) { drone.PalmLand() })
 
 		// joystick stick movements
 		// move left/right
