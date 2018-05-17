@@ -23,13 +23,19 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
 
+	"github.com/veandco/go-sdl2/sdl"
+	"github.com/veandco/go-sdl2/ttf"
+
 	"gobot.io/x/gobot"
 	"gobot.io/x/gobot/platforms/dji/tello"
 	"gobot.io/x/gobot/platforms/joystick"
+	"gobot.io/x/gobot/platforms/keyboard"
 )
 
 const telloUDPport = "8890"
@@ -45,13 +51,29 @@ const (
 	turnLRCtrl     = joystick.LeftX
 )
 
+const (
+	winTitle            = "Tello Desktop"
+	winWidth, winHeight = 800, 600
+	fontPath, fontSize  = "./res/neuropolitical.regular.ttf", 32
+)
+
 var (
+	robot *gobot.Robot
 	goLeft, goRight, goFwd, goBack,
 	goUp, goDown, clockwise, antiClockwise int
 	moveMutex sync.RWMutex
 )
 
+var (
+	font    *ttf.Font
+	window  *sdl.Window
+	surface *sdl.Surface
+)
+
 func main() {
+	setupWindow()
+
+	kbd := keyboard.NewDriver()
 	joystickAdaptor := joystick.NewAdaptor()
 	stick := joystick.NewDriver(joystickAdaptor, "tflightHotasX")
 
@@ -198,13 +220,73 @@ func main() {
 				fmt.Println("clockwise & antiClockwise set to 0")
 			}
 		})
+
+		// keyboard commands
+		kbd.On(keyboard.Key, func(data interface{}) {
+			key := data.(keyboard.KeyEvent)
+			switch key.Key {
+			case keyboard.Q, keyboard.Escape:
+				exitNicely()
+			}
+		})
 	}
 
-	robot := gobot.NewRobot("tello",
+	robot = gobot.NewRobot("tello",
 		[]gobot.Connection{joystickAdaptor},
-		[]gobot.Device{drone, stick},
+		[]gobot.Device{kbd, drone, stick},
 		work,
 	)
 
 	robot.Start()
+}
+
+func setupWindow() {
+	var err error
+
+	if err = sdl.Init(sdl.INIT_EVERYTHING); err != nil {
+		panic(err)
+	}
+	// defer sdl.Quit()
+
+	if err = ttf.Init(); err != nil {
+		panic(err)
+	}
+
+	font, err = ttf.OpenFont(fontPath, fontSize)
+	if err != nil {
+		log.Fatalf("Failed to open font %s due to %v", fontPath, err)
+	}
+	// defer font.Close()
+
+	window, err = sdl.CreateWindow(winTitle, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, winWidth, winHeight, sdl.WINDOW_SHOWN)
+	if err != nil {
+		panic(err)
+	}
+	// defer window.Destroy()
+
+	surface, err = window.GetSurface()
+	if err != nil {
+		panic(err)
+	}
+	surface.FillRect(nil, 0)
+
+	hello, err := font.RenderUTF8Solid("Hello, World!", sdl.Color{255, 128, 64, 255})
+	if err != nil {
+		panic(err)
+	}
+
+	err = hello.Blit(nil, surface, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	window.UpdateSurface()
+}
+
+func exitNicely() {
+
+	window.Destroy()
+	font.Close()
+	sdl.Quit()
+	os.Exit(0)
 }
