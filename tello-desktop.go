@@ -94,7 +94,6 @@ func main() {
 		drone.On(tello.LandingEvent, func(data interface{}) { fmt.Println("Landing") })
 		//drone.On(tello.LightStrengthEvent, func(data interface{}) { fmt.Println("Light Strength Event") })
 		drone.On(tello.FlightDataEvent, func(data interface{}) {
-			fmt.Println("Flight Data")
 			fd := data.(*tello.FlightData)
 			fmt.Printf("Batt: %d%%, Height: %.1fm, Hover: %t, Sky: %t, Ground: %t, Open: %t\n",
 				fd.BatteryPercentage,
