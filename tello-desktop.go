@@ -22,11 +22,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -35,47 +39,89 @@ import (
 	"gobot.io/x/gobot"
 	"gobot.io/x/gobot/platforms/dji/tello"
 	"gobot.io/x/gobot/platforms/joystick"
-	"gobot.io/x/gobot/platforms/keyboard"
 )
 
 const telloUDPport = "8890"
 
-// control mapping for T-Flight flight controller
+// known joysticks
 const (
-	takeOffCtrl    = joystick.SquarePress
+	dualshock4    = "dualshock4"
+	tflightHotasX = "tflightHotasX"
+)
+
+// control mapping
+const (
+	takeOffCtrl    = joystick.TrianglePress
 	landCtrl       = joystick.XPress
 	stopCtrl       = joystick.CirclePress
 	moveLRCtrl     = joystick.RightX
 	moveFwdBkCtrl  = joystick.RightY
 	moveUpDownCtrl = joystick.LeftY
 	turnLRCtrl     = joystick.LeftX
+	bounceCtrl     = joystick.L1Press
+	palmLandCtrl   = joystick.L2Press
 )
 
 const (
-	winTitle            = "Tello Desktop"
-	winWidth, winHeight = 800, 600
-	fontPath, fontSize  = "./res/neuropolitical.regular.ttf", 32
+	winTitle                                = "Tello Desktop"
+	winWidth, winHeight                     = 800, 600
+	fontPath                                = "./assets/Inconsolata-Bold.ttf"
+	bigFontSize, medFontSize, smallFontSize = 32, 24, 12
+)
+
+// program flags
+var (
+	joystickFlag = flag.String("joystick", tflightHotasX, "Gobot joystick ID <dualshock4|tflightHotasX>")
 )
 
 var (
 	robot *gobot.Robot
 	goLeft, goRight, goFwd, goBack,
 	goUp, goDown, clockwise, antiClockwise int
-	moveMutex sync.RWMutex
+	moveMu       sync.RWMutex
+	flightData   *tello.FlightData
+	flightMsg    = "Idle"
+	flightDataMu sync.RWMutex
+	wifiData     *tello.WifiData
+	wifiDataMu   sync.RWMutex
+	dummyFD      = new(tello.FlightData) // FIXME Just for debugging
 )
 
 var (
-	font    *ttf.Font
-	window  *sdl.Window
-	surface *sdl.Surface
+	bigFont, medFont, smallFont *ttf.Font
+	window                      *sdl.Window
+	surface                     *sdl.Surface
+	textColour                  = sdl.Color{R: 255, G: 128, B: 64, A: 255}
 )
 
 func main() {
+
+	// catch termination signal
+	sigChan := make(chan os.Signal, 2)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		exitNicely()
+	}()
+
+	// FIXME Just for debugging...
+	flightData = dummyFD
+
+	flag.Parse()
+	switch *joystickFlag {
+	case dualshock4:
+		fmt.Println("Setting up DualShock4 controller")
+	case tflightHotasX:
+		fmt.Println("Setting up T-Flight HOTAS-X controller")
+	default:
+		log.Fatalf("Unknown joystick type %s", *joystickFlag)
+	}
+
 	setupWindow()
 
-	kbd := keyboard.NewDriver()
+	//kbd := keyboard.NewDriver()
 	joystickAdaptor := joystick.NewAdaptor()
-	stick := joystick.NewDriver(joystickAdaptor, "tflightHotasX")
+	stick := joystick.NewDriver(joystickAdaptor, *joystickFlag)
 
 	drone := tello.NewDriver(telloUDPport)
 
@@ -84,9 +130,10 @@ func main() {
 		// start external mplayer instance...
 		// the -vo X11 parm allows it to run nicely inside a virtual machine
 		// setting the FPS to 60 seems to produce smoother video
-		mplayer := exec.Command("mplayer", "-vo", "x11", "-fps", "60", "-")
-		mplayerIn, _ := mplayer.StdinPipe()
-		if err := mplayer.Start(); err != nil {
+		player := exec.Command("mplayer", "-nosound", "-vo", "x11", "-fps", "60", "-")
+		//player := exec.Command("ffplay", "-framedrop", "-an", "-i", "pipe:0")
+		playerIn, _ := player.StdinPipe()
+		if err := player.Start(); err != nil {
 			fmt.Println(err)
 			return
 		}
@@ -104,43 +151,77 @@ func main() {
 		// send each video frame recieved to mplayer
 		drone.On(tello.VideoFrameEvent, func(data interface{}) {
 			pkt := data.([]byte)
-			if _, err := mplayerIn.Write(pkt); err != nil {
+			if _, err := playerIn.Write(pkt); err != nil {
 				fmt.Println(err)
 			}
 		})
 
 		// display some events on console
-		drone.On(tello.TakeoffEvent, func(data interface{}) { fmt.Println("Taken Off") })
-		drone.On(tello.LandingEvent, func(data interface{}) { fmt.Println("Landing") })
+		drone.On(tello.TakeoffEvent, func(data interface{}) {
+			flightDataMu.Lock()
+			flightMsg = "Taking Off"
+			flightDataMu.Unlock()
+		})
+		drone.On(tello.LandingEvent, func(data interface{}) {
+			flightDataMu.Lock()
+			flightMsg = "Landing"
+			flightDataMu.Unlock()
+		})
 		//drone.On(tello.LightStrengthEvent, func(data interface{}) { fmt.Println("Light Strength Event") })
 		drone.On(tello.FlightDataEvent, func(data interface{}) {
-			fmt.Println("Flight Data")
-			fd := data.(*tello.FlightData)
-			fmt.Printf("Batt: %d%%, Height: %.1fm, Hover: %t, Sky: %t, Ground: %t, Open: %t\n",
-				fd.BatteryPercentage,
-				float32(fd.Height)/10,
-				fd.DroneHover,
-				fd.EmSky, fd.EmGround, fd.EmOpen)
+			flightDataMu.Lock()
+			flightData = data.(*tello.FlightData)
+			if flightData.BatteryLow {
+				flightMsg = "Battery Low"
+			}
+			if flightData.BatteryLower {
+				flightMsg = "Battery Lower"
+			}
+			flightDataMu.Unlock()
+
+		})
+
+		drone.On(tello.WifiDataEvent, func(data interface{}) {
+			wifiDataMu.Lock()
+			wifiData = data.(*tello.WifiData)
+			wifiDataMu.Unlock()
 		})
 
 		// joystick button presses
-		stick.On(takeOffCtrl, func(data interface{}) { drone.TakeOff() })
+		stick.On(takeOffCtrl, func(data interface{}) {
+			drone.TakeOff()
+			fmt.Println("Taking off")
+		})
 
-		stick.On(landCtrl, func(data interface{}) { drone.Land() })
+		stick.On(landCtrl, func(data interface{}) {
+			drone.Land()
+			fmt.Println("Landing")
+		})
 
 		stick.On(stopCtrl, func(data interface{}) {
+			fmt.Println("Stopping (Hover)")
 			drone.Left(0)
 			drone.Right(0)
 			drone.Up(0)
 			drone.Down(0)
 		})
 
+		stick.On(bounceCtrl, func(data interface{}) {
+			fmt.Println("Bounce start/stop")
+			drone.Bounce()
+		})
+
+		stick.On(palmLandCtrl, func(data interface{}) {
+			fmt.Println("Palm Landing")
+			drone.PalmLand()
+		})
+
 		// joystick stick movements
 		// move left/right
 		stick.On(moveLRCtrl, func(data interface{}) {
 			js16 := int(data.(int16))
-			moveMutex.Lock()
-			defer moveMutex.Unlock()
+			moveMu.Lock()
+			defer moveMu.Unlock()
 			switch {
 			case js16 < 0:
 				goLeft = js16 / -328
@@ -160,8 +241,8 @@ func main() {
 		// move forward/backward
 		stick.On(moveFwdBkCtrl, func(data interface{}) {
 			js16 := int(data.(int16))
-			moveMutex.Lock()
-			defer moveMutex.Unlock()
+			moveMu.Lock()
+			defer moveMu.Unlock()
 			switch {
 			case js16 > 0:
 				goBack = js16 / 328
@@ -181,8 +262,8 @@ func main() {
 		// move up/down
 		stick.On(moveUpDownCtrl, func(data interface{}) {
 			js16 := int(data.(int16))
-			moveMutex.Lock()
-			defer moveMutex.Unlock()
+			moveMu.Lock()
+			defer moveMu.Unlock()
 			switch {
 			case js16 > 0:
 				goDown = js16 / 328
@@ -202,8 +283,8 @@ func main() {
 		// turn left/right
 		stick.On(turnLRCtrl, func(data interface{}) {
 			js16 := int(data.(int16))
-			moveMutex.Lock()
-			defer moveMutex.Unlock()
+			moveMu.Lock()
+			defer moveMu.Unlock()
 			switch {
 			case js16 < 0:
 				antiClockwise = js16 / -328
@@ -221,19 +302,21 @@ func main() {
 			}
 		})
 
-		// keyboard commands
-		kbd.On(keyboard.Key, func(data interface{}) {
-			key := data.(keyboard.KeyEvent)
-			switch key.Key {
-			case keyboard.Q, keyboard.Escape:
-				exitNicely()
-			}
-		})
+		// // keyboard commands
+		// kbd.On(keyboard.Key, func(data interface{}) {
+		// 	key := data.(keyboard.KeyEvent)
+		// 	switch key.Key {
+		// 	case keyboard.Q, keyboard.Escape:
+		// 		exitNicely()
+		// 	}
+		// })
+
+		gobot.Every(time.Second, func() { updateWindow() })
 	}
 
 	robot = gobot.NewRobot("tello",
 		[]gobot.Connection{joystickAdaptor},
-		[]gobot.Device{kbd, drone, stick},
+		[]gobot.Device{drone, stick},
 		work,
 	)
 
@@ -246,47 +329,99 @@ func setupWindow() {
 	if err = sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		panic(err)
 	}
-	// defer sdl.Quit()
-
 	if err = ttf.Init(); err != nil {
 		panic(err)
 	}
-
-	font, err = ttf.OpenFont(fontPath, fontSize)
+	bigFont, err = ttf.OpenFont(fontPath, bigFontSize)
 	if err != nil {
 		log.Fatalf("Failed to open font %s due to %v", fontPath, err)
 	}
-	// defer font.Close()
-
+	medFont, _ = ttf.OpenFont(fontPath, medFontSize)
+	smallFont, _ = ttf.OpenFont(fontPath, smallFontSize)
 	window, err = sdl.CreateWindow(winTitle, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, winWidth, winHeight, sdl.WINDOW_SHOWN)
 	if err != nil {
 		panic(err)
 	}
-	// defer window.Destroy()
-
 	surface, err = window.GetSurface()
 	if err != nil {
 		panic(err)
 	}
 	surface.FillRect(nil, 0)
-
-	hello, err := font.RenderUTF8Solid("Hello, World!", sdl.Color{255, 128, 64, 255})
-	if err != nil {
-		panic(err)
-	}
-
-	err = hello.Blit(nil, surface, nil)
-	if err != nil {
-		panic(err)
-	}
-
+	renderTextAt("Hello, Tello!", bigFont, 200, 200)
 	window.UpdateSurface()
+}
+
+func updateWindow() {
+	surface.FillRect(nil, 0)
+
+	renderTextAt("Steve's Tello Desktop", bigFont, 155, 5)
+	renderTextAt(time.Now().Format(time.RFC1123), medFont, 150, 50)
+	flightDataMu.RLock()
+	if flightData == nil {
+		renderTextAt("No flight data available", bigFont, 100, 200)
+	} else {
+		ht := fmt.Sprintf("Height: %.1fm", float32(flightData.Height)/10)
+		renderTextAt(ht, medFont, 20, 100)
+
+		gs := fmt.Sprintf("Ground Speed:  %d m/s", flightData.GroundSpeed)
+		renderTextAt(gs, medFont, 20, 140)
+		ns := fmt.Sprintf("North Speed:   %d m/s", flightData.NorthSpeed)
+		renderTextAt(ns, medFont, 20, 160)
+		es := fmt.Sprintf("East Speed:    %d m/s", flightData.EastSpeed)
+		renderTextAt(es, medFont, 20, 180)
+		ds := math.Sqrt(float64(flightData.NorthSpeed*flightData.NorthSpeed) + float64(flightData.EastSpeed*flightData.EastSpeed))
+		dstr := fmt.Sprintf("Derived Speed: %.1f m/s", ds)
+		renderTextAt(dstr, medFont, 20, 200)
+
+		loc := fmt.Sprintf("Hover: %c, Open: %c, Sky: %c, Ground: %c",
+			boolToYN(flightData.DroneHover),
+			boolToYN(flightData.EmOpen),
+			boolToYN(flightData.EmSky),
+			boolToYN(flightData.EmGround))
+		renderTextAt(loc, medFont, 20, 240)
+
+		bp := fmt.Sprintf("Battery: %d%%", flightData.BatteryPercentage)
+		renderTextAt(bp, medFont, 20, 500)
+		ftr := fmt.Sprintf("Remaining Flight Time: %ds", flightData.DroneFlyTimeLeft)
+		renderTextAt(ftr, medFont, 300, 500)
+		if flightMsg != "" {
+			renderTextAt(flightMsg, medFont, 20, 550)
+		}
+	}
+	flightDataMu.RUnlock()
+	wifiDataMu.RLock()
+	ws := fmt.Sprintf("WiFi Strength: %d,  Interference: %d", wifiData.Strength, wifiData.Disturb)
+	wifiDataMu.RUnlock()
+	renderTextAt(ws, medFont, 20, 480)
+	window.UpdateSurface()
+}
+
+func renderTextAt(what string, font *ttf.Font, x int32, y int32) {
+	render, err := font.RenderUTF8Solid(what, textColour)
+	if err != nil {
+		panic(err)
+	}
+	rect := &sdl.Rect{X: x, Y: y}
+	err = render.Blit(nil, surface, rect)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func exitNicely() {
 
+	robot.Stop()
 	window.Destroy()
-	font.Close()
+	bigFont.Close()
+	medFont.Close()
+	smallFont.Close()
 	sdl.Quit()
 	os.Exit(0)
+}
+
+func boolToYN(b bool) byte {
+	if b {
+		return 'Y'
+	}
+	return 'N'
 }
