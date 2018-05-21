@@ -39,17 +39,40 @@ import (
 	"gobot.io/x/gobot"
 	"gobot.io/x/gobot/platforms/dji/tello"
 	"gobot.io/x/gobot/platforms/joystick"
+	"gobot.io/x/gobot/platforms/keyboard"
 )
 
 const telloUDPport = "8890"
 
-// known joysticks
+// known controllers
 const (
-	dualshock4    = "dualshock4"
-	tflightHotasX = "tflightHotasX"
+	keyboardCtl      = "keyboard"
+	dualshock4Ctl    = "dualshock4"
+	tflightHotasXCtl = "tflightHotasX"
 )
 
-// control mapping
+// keyboard control mapping
+const (
+	takeOffKey   = keyboard.T
+	landKey      = keyboard.L
+	palmlandKey  = keyboard.P
+	panicKey     = keyboard.Spacebar
+	moveLeftKey  = keyboard.ArrowLeft
+	moveRightKey = keyboard.ArrowRight
+	moveFwdKey   = keyboard.ArrowUp
+	moveBkKey    = keyboard.ArrowDown
+	turnLeftKey  = keyboard.A
+	turnRightKey = keyboard.D
+	moveUpKey    = keyboard.W
+	moveDownKey  = keyboard.S
+	bounceKey    = keyboard.B
+	quitKey      = keyboard.Q
+	helpKey      = keyboard.H
+)
+
+const keyMoveIncr = 10
+
+// joystick control mapping
 const (
 	takeOffCtrl    = joystick.TrianglePress
 	landCtrl       = joystick.XPress
@@ -71,11 +94,14 @@ const (
 
 // program flags
 var (
-	joystickFlag = flag.String("joystick", tflightHotasX, "Gobot joystick ID <dualshock4|tflightHotasX>")
+	controlFlag = flag.String("control", "keyboard", "Gobot controller <keyboard|dualshock4|tflightHotasX")
+	joyHelpFlag = flag.Bool("joyhelp", false, "Print help for joystick control mapping and exit")
+	keyHelpFlag = flag.Bool("keyhelp", false, "Print help for keyboard control mapping and exit")
 )
 
 var (
-	robot *gobot.Robot
+	robot       *gobot.Robot
+	useKeyboard bool // if this is set we use keyboard input, otherwise joystick
 	goLeft, goRight, goFwd, goBack,
 	goUp, goDown, clockwise, antiClockwise int
 	moveMu       sync.RWMutex
@@ -84,7 +110,10 @@ var (
 	flightDataMu sync.RWMutex
 	wifiData     *tello.WifiData
 	wifiDataMu   sync.RWMutex
-	dummyFD      = new(tello.FlightData) // FIXME Just for debugging
+
+	// These are just for development purposes
+	dummyFD = new(tello.FlightData)
+	dummyWD = new(tello.WifiData)
 )
 
 var (
@@ -94,7 +123,42 @@ var (
 	textColour                  = sdl.Color{R: 255, G: 128, B: 64, A: 255}
 )
 
+func printKeyHelp() {
+	fmt.Print(
+		`Tello Desktop Keyboard Control Mapping
+
+<Cursor Keys> Move Left/Right/Forward/Backward
+W|A|S|D       W: Up, S: Down, A: Turn Left, D: Turn Right
+<SPACE>       Hover (stop all movement)
+T             Takeoff
+L             Land
+P             Palm Land
+B             Bounce (on/off)
+Q             Quit
+H             Print Help
+`)
+}
+
 func main() {
+	flag.Parse()
+	if *keyHelpFlag {
+		printKeyHelp()
+		os.Exit(0)
+	}
+	if *joyHelpFlag {
+		fmt.Print(
+			`Tello Desktop Joystick Control Mapping
+
+Right Stick  Forward/Backward/Left/Right
+Left Stick   Up/Down/Turn
+Triangle     Takeoff
+X            Land
+Circle       Hover (stop all movement)
+L1           Bounce (on/off)
+L2           Palm Land
+`)
+		os.Exit(0)
+	}
 
 	// catch termination signal
 	sigChan := make(chan os.Signal, 2)
@@ -104,24 +168,29 @@ func main() {
 		exitNicely()
 	}()
 
-	// FIXME Just for debugging...
+	// FIXME Just for development...
 	flightData = dummyFD
+	wifiData = dummyWD
 
-	flag.Parse()
-	switch *joystickFlag {
-	case dualshock4:
+	switch *controlFlag {
+	case keyboardCtl:
+		fmt.Println("Setting up Keyboard controller")
+		useKeyboard = true
+	case dualshock4Ctl:
 		fmt.Println("Setting up DualShock4 controller")
-	case tflightHotasX:
+		useKeyboard = false
+	case tflightHotasXCtl:
 		fmt.Println("Setting up T-Flight HOTAS-X controller")
+		useKeyboard = false
 	default:
-		log.Fatalf("Unknown joystick type %s", *joystickFlag)
+		log.Fatalf("Unknown joystick type %s", *controlFlag)
 	}
 
 	setupWindow()
 
-	//kbd := keyboard.NewDriver()
+	kbd := keyboard.NewDriver()
 	joystickAdaptor := joystick.NewAdaptor()
-	stick := joystick.NewDriver(joystickAdaptor, *joystickFlag)
+	stick := joystick.NewDriver(joystickAdaptor, *controlFlag)
 
 	drone := tello.NewDriver(telloUDPport)
 
@@ -178,7 +247,6 @@ func main() {
 				flightMsg = "Battery Lower"
 			}
 			flightDataMu.Unlock()
-
 		})
 
 		drone.On(tello.WifiDataEvent, func(data interface{}) {
@@ -202,8 +270,12 @@ func main() {
 			fmt.Println("Stopping (Hover)")
 			drone.Left(0)
 			drone.Right(0)
+			drone.Forward(0)
+			drone.Backward(0)
 			drone.Up(0)
 			drone.Down(0)
+			drone.Clockwise(0)
+			drone.CounterClockwise(0)
 		})
 
 		stick.On(bounceCtrl, func(data interface{}) {
@@ -302,23 +374,66 @@ func main() {
 			}
 		})
 
-		// // keyboard commands
-		// kbd.On(keyboard.Key, func(data interface{}) {
-		// 	key := data.(keyboard.KeyEvent)
-		// 	switch key.Key {
-		// 	case keyboard.Q, keyboard.Escape:
-		// 		exitNicely()
-		// 	}
-		// })
+		// keyboard commands
+		kbd.On(keyboard.Key, func(data interface{}) {
+			key := data.(keyboard.KeyEvent)
+			switch key.Key {
+			case takeOffKey:
+				drone.TakeOff()
+			case landKey:
+				drone.Land()
+			case palmlandKey:
+				drone.PalmLand()
+			case panicKey:
+				drone.Left(0)
+				drone.Right(0)
+				drone.Forward(0)
+				drone.Backward(0)
+				drone.Up(0)
+				drone.Down(0)
+				drone.Clockwise(0)
+				drone.CounterClockwise(0)
+			case bounceKey:
+				drone.Bounce()
+			case moveLeftKey:
+				drone.Left(keyMoveIncr)
+			case moveRightKey:
+				drone.Right(keyMoveIncr)
+			case moveFwdKey:
+				drone.Forward(keyMoveIncr)
+			case moveBkKey:
+				drone.Backward(keyMoveIncr)
+			case moveUpKey:
+				drone.Up(keyMoveIncr)
+			case moveDownKey:
+				drone.Down(keyMoveIncr)
+			case turnLeftKey:
+				drone.CounterClockwise(keyMoveIncr)
+			case turnRightKey:
+				drone.Clockwise(keyMoveIncr)
+			case quitKey, keyboard.Escape:
+				exitNicely()
+			case helpKey:
+				printKeyHelp()
+			}
+		})
 
 		gobot.Every(time.Second, func() { updateWindow() })
 	}
 
-	robot = gobot.NewRobot("tello",
-		[]gobot.Connection{joystickAdaptor},
-		[]gobot.Device{drone, stick},
-		work,
-	)
+	if useKeyboard {
+		robot = gobot.NewRobot("tello",
+			[]gobot.Connection{},
+			[]gobot.Device{drone, kbd},
+			work,
+		)
+	} else {
+		robot = gobot.NewRobot("tello",
+			[]gobot.Connection{joystickAdaptor},
+			[]gobot.Device{drone, stick},
+			work,
+		)
+	}
 
 	robot.Start()
 }
@@ -359,40 +474,45 @@ func updateWindow() {
 	flightDataMu.RLock()
 	if flightData == nil {
 		renderTextAt("No flight data available", bigFont, 100, 200)
+		flightDataMu.RUnlock()
 	} else {
 		ht := fmt.Sprintf("Height: %.1fm", float32(flightData.Height)/10)
-		renderTextAt(ht, medFont, 20, 100)
-
 		gs := fmt.Sprintf("Ground Speed:  %d m/s", flightData.GroundSpeed)
-		renderTextAt(gs, medFont, 20, 140)
-		ns := fmt.Sprintf("North Speed:   %d m/s", flightData.NorthSpeed)
-		renderTextAt(ns, medFont, 20, 160)
-		es := fmt.Sprintf("East Speed:    %d m/s", flightData.EastSpeed)
-		renderTextAt(es, medFont, 20, 180)
+		fs := fmt.Sprintf("Speeds - Fwd: %d m/s", flightData.NorthSpeed)
+		ls := fmt.Sprintf("Side: %d m/s", flightData.EastSpeed)
 		ds := math.Sqrt(float64(flightData.NorthSpeed*flightData.NorthSpeed) + float64(flightData.EastSpeed*flightData.EastSpeed))
-		dstr := fmt.Sprintf("Derived Speed: %.1f m/s", ds)
-		renderTextAt(dstr, medFont, 20, 200)
-
+		dstr := fmt.Sprintf("Derived: %.1f m/s", ds)
 		loc := fmt.Sprintf("Hover: %c, Open: %c, Sky: %c, Ground: %c",
 			boolToYN(flightData.DroneHover),
 			boolToYN(flightData.EmOpen),
 			boolToYN(flightData.EmSky),
 			boolToYN(flightData.EmGround))
-		renderTextAt(loc, medFont, 20, 240)
-
 		bp := fmt.Sprintf("Battery: %d%%", flightData.BatteryPercentage)
-		renderTextAt(bp, medFont, 20, 500)
 		ftr := fmt.Sprintf("Remaining Flight Time: %ds", flightData.DroneFlyTimeLeft)
+		msg := flightMsg
+
+		flightDataMu.RUnlock()
+
+		// render the text outside of the data lock for best concurrency
+		renderTextAt(ht, bigFont, 220, 100)
+		renderTextAt(gs, medFont, 200, 140)
+		renderTextAt(fs, medFont, 20, 180)
+		renderTextAt(ls, medFont, 290, 180)
+		renderTextAt(dstr, medFont, 460, 180)
+		renderTextAt(loc, medFont, 20, 240)
+		renderTextAt(bp, medFont, 20, 500)
 		renderTextAt(ftr, medFont, 300, 500)
-		if flightMsg != "" {
+		if msg != "" {
 			renderTextAt(flightMsg, medFont, 20, 550)
 		}
 	}
-	flightDataMu.RUnlock()
+
 	wifiDataMu.RLock()
-	ws := fmt.Sprintf("WiFi Strength: %d,  Interference: %d", wifiData.Strength, wifiData.Disturb)
+	ws := fmt.Sprintf("WiFi - Strength: %d Interference: %d", wifiData.Strength, wifiData.Disturb)
 	wifiDataMu.RUnlock()
-	renderTextAt(ws, medFont, 20, 480)
+
+	renderTextAt(ws, medFont, 20, 460)
+
 	window.UpdateSurface()
 }
 
