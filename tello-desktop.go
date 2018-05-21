@@ -70,7 +70,7 @@ const (
 	helpKey      = keyboard.H
 )
 
-const keyMoveIncr = 10
+const keyMoveIncr = 15
 
 // joystick control mapping
 const (
@@ -408,9 +408,9 @@ L2           Palm Land
 			case moveDownKey:
 				drone.Down(keyMoveIncr)
 			case turnLeftKey:
-				drone.CounterClockwise(keyMoveIncr)
+				drone.CounterClockwise(keyMoveIncr * 2)
 			case turnRightKey:
-				drone.Clockwise(keyMoveIncr)
+				drone.Clockwise(keyMoveIncr * 2)
 			case quitKey, keyboard.Escape:
 				exitNicely()
 			case helpKey:
