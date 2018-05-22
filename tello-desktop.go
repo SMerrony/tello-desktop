@@ -39,7 +39,6 @@ import (
 	"gobot.io/x/gobot"
 	"gobot.io/x/gobot/platforms/dji/tello"
 	"gobot.io/x/gobot/platforms/joystick"
-	"gobot.io/x/gobot/platforms/keyboard"
 )
 
 const telloUDPport = "8890"
@@ -53,21 +52,21 @@ const (
 
 // keyboard control mapping
 const (
-	takeOffKey   = keyboard.T
-	landKey      = keyboard.L
-	palmlandKey  = keyboard.P
-	panicKey     = keyboard.Spacebar
-	moveLeftKey  = keyboard.ArrowLeft
-	moveRightKey = keyboard.ArrowRight
-	moveFwdKey   = keyboard.ArrowUp
-	moveBkKey    = keyboard.ArrowDown
-	turnLeftKey  = keyboard.A
-	turnRightKey = keyboard.D
-	moveUpKey    = keyboard.W
-	moveDownKey  = keyboard.S
-	bounceKey    = keyboard.B
-	quitKey      = keyboard.Q
-	helpKey      = keyboard.H
+	takeOffKey   = sdl.K_t
+	landKey      = sdl.K_l
+	palmlandKey  = sdl.K_p
+	panicKey     = sdl.K_SPACE
+	moveLeftKey  = sdl.K_LEFT
+	moveRightKey = sdl.K_RIGHT
+	moveFwdKey   = sdl.K_UP
+	moveBkKey    = sdl.K_DOWN
+	turnLeftKey  = sdl.K_a
+	turnRightKey = sdl.K_d
+	moveUpKey    = sdl.K_w
+	moveDownKey  = sdl.K_s
+	bounceKey    = sdl.K_b
+	quitKey      = sdl.K_q
+	helpKey      = sdl.K_h
 )
 
 const keyMoveIncr = 15
@@ -88,6 +87,7 @@ const (
 const (
 	winTitle                                = "Tello Desktop"
 	winWidth, winHeight                     = 800, 600
+	winUpdatePeriod                         = 333 * time.Millisecond
 	fontPath                                = "./assets/Inconsolata-Bold.ttf"
 	bigFontSize, medFontSize, smallFontSize = 32, 24, 12
 )
@@ -102,6 +102,7 @@ var (
 var (
 	robot       *gobot.Robot
 	useKeyboard bool // if this is set we use keyboard input, otherwise joystick
+	keyChan     chan sdl.Keysym
 	goLeft, goRight, goFwd, goBack,
 	goUp, goDown, clockwise, antiClockwise int
 	moveMu       sync.RWMutex
@@ -139,15 +140,9 @@ H             Print Help
 `)
 }
 
-func main() {
-	flag.Parse()
-	if *keyHelpFlag {
-		printKeyHelp()
-		os.Exit(0)
-	}
-	if *joyHelpFlag {
-		fmt.Print(
-			`Tello Desktop Joystick Control Mapping
+func printJoystickHelp() {
+	fmt.Print(
+		`Tello Desktop Joystick Control Mapping
 
 Right Stick  Forward/Backward/Left/Right
 Left Stick   Up/Down/Turn
@@ -157,6 +152,16 @@ Circle       Hover (stop all movement)
 L1           Bounce (on/off)
 L2           Palm Land
 `)
+}
+
+func main() {
+	flag.Parse()
+	if *keyHelpFlag {
+		printKeyHelp()
+		os.Exit(0)
+	}
+	if *joyHelpFlag {
+		printJoystickHelp()
 		os.Exit(0)
 	}
 
@@ -174,8 +179,9 @@ L2           Palm Land
 
 	switch *controlFlag {
 	case keyboardCtl:
-		fmt.Println("Setting up Keyboard controller")
+		fmt.Println("Setting up Keyboard as controller")
 		useKeyboard = true
+		keyChan = make(chan sdl.Keysym, 3)
 	case dualshock4Ctl:
 		fmt.Println("Setting up DualShock4 controller")
 		useKeyboard = false
@@ -188,7 +194,6 @@ L2           Palm Land
 
 	setupWindow()
 
-	kbd := keyboard.NewDriver()
 	joystickAdaptor := joystick.NewAdaptor()
 	stick := joystick.NewDriver(joystickAdaptor, *controlFlag)
 
@@ -374,57 +379,57 @@ L2           Palm Land
 			}
 		})
 
-		// keyboard commands
-		kbd.On(keyboard.Key, func(data interface{}) {
-			key := data.(keyboard.KeyEvent)
-			switch key.Key {
-			case takeOffKey:
-				drone.TakeOff()
-			case landKey:
-				drone.Land()
-			case palmlandKey:
-				drone.PalmLand()
-			case panicKey:
-				drone.Left(0)
-				drone.Right(0)
-				drone.Forward(0)
-				drone.Backward(0)
-				drone.Up(0)
-				drone.Down(0)
-				drone.Clockwise(0)
-				drone.CounterClockwise(0)
-			case bounceKey:
-				drone.Bounce()
-			case moveLeftKey:
-				drone.Left(keyMoveIncr)
-			case moveRightKey:
-				drone.Right(keyMoveIncr)
-			case moveFwdKey:
-				drone.Forward(keyMoveIncr)
-			case moveBkKey:
-				drone.Backward(keyMoveIncr)
-			case moveUpKey:
-				drone.Up(keyMoveIncr)
-			case moveDownKey:
-				drone.Down(keyMoveIncr)
-			case turnLeftKey:
-				drone.CounterClockwise(keyMoveIncr * 2)
-			case turnRightKey:
-				drone.Clockwise(keyMoveIncr * 2)
-			case quitKey, keyboard.Escape:
-				exitNicely()
-			case helpKey:
-				printKeyHelp()
-			}
-		})
+		gobot.Every(winUpdatePeriod, func() { updateWindow() })
 
-		gobot.Every(time.Second, func() { updateWindow() })
+		if useKeyboard {
+			for key := range keyChan {
+				switch key.Sym {
+				case takeOffKey:
+					drone.TakeOff()
+				case landKey:
+					drone.Land()
+				case palmlandKey:
+					drone.PalmLand()
+				case panicKey:
+					drone.Left(0)
+					drone.Right(0)
+					drone.Forward(0)
+					drone.Backward(0)
+					drone.Up(0)
+					drone.Down(0)
+					drone.Clockwise(0)
+					drone.CounterClockwise(0)
+				case bounceKey:
+					drone.Bounce()
+				case moveLeftKey:
+					drone.Left(keyMoveIncr)
+				case moveRightKey:
+					drone.Right(keyMoveIncr)
+				case moveFwdKey:
+					drone.Forward(keyMoveIncr)
+				case moveBkKey:
+					drone.Backward(keyMoveIncr)
+				case moveUpKey:
+					drone.Up(keyMoveIncr)
+				case moveDownKey:
+					drone.Down(keyMoveIncr)
+				case turnLeftKey:
+					drone.CounterClockwise(keyMoveIncr * 2)
+				case turnRightKey:
+					drone.Clockwise(keyMoveIncr * 2)
+				case quitKey, sdl.K_ESCAPE:
+					exitNicely()
+				case helpKey:
+					printKeyHelp()
+				}
+			}
+		}
 	}
 
 	if useKeyboard {
 		robot = gobot.NewRobot("tello",
 			[]gobot.Connection{},
-			[]gobot.Device{drone, kbd},
+			[]gobot.Device{drone},
 			work,
 		)
 	} else {
@@ -464,6 +469,8 @@ func setupWindow() {
 	surface.FillRect(nil, 0)
 	renderTextAt("Hello, Tello!", bigFont, 200, 200)
 	window.UpdateSurface()
+
+	go sdlEventListener()
 }
 
 func updateWindow() {
@@ -489,6 +496,7 @@ func updateWindow() {
 			boolToYN(flightData.EmGround))
 		bp := fmt.Sprintf("Battery: %d%%", flightData.BatteryPercentage)
 		ftr := fmt.Sprintf("Remaining Flight Time: %ds", flightData.DroneFlyTimeLeft)
+		//ws := fmt.Sprintf("WiFi - Strength: %d Interference: %d", flightData.WifiStrength, flightData.WifiDisturb)
 		msg := flightMsg
 
 		flightDataMu.RUnlock()
@@ -500,6 +508,7 @@ func updateWindow() {
 		renderTextAt(ls, medFont, 290, 180)
 		renderTextAt(dstr, medFont, 460, 180)
 		renderTextAt(loc, medFont, 20, 240)
+		//renderTextAt(ws, medFont, 20, 460)
 		renderTextAt(bp, medFont, 20, 500)
 		renderTextAt(ftr, medFont, 300, 500)
 		if msg != "" {
@@ -544,4 +553,23 @@ func boolToYN(b bool) byte {
 		return 'Y'
 	}
 	return 'N'
+}
+
+func sdlEventListener() {
+	var event sdl.Event
+	for {
+		event = sdl.WaitEvent()
+		switch event.(type) {
+		case *sdl.QuitEvent: // catch window closure
+			fmt.Println("Window Quit event")
+			exitNicely()
+
+		case *sdl.KeyboardEvent:
+			fmt.Println("Keyboard Event")
+			// only send key presses for now
+			if event.(*sdl.KeyboardEvent).Type == sdl.KEYDOWN {
+				keyChan <- event.(*sdl.KeyboardEvent).Keysym
+			}
+		}
+	}
 }
