@@ -26,18 +26,11 @@ Any released versions should build with a contemporary release of Gobot.
 
 After a couple of seconds a video feed should appear - if it doesn't, then something is wrong so do not attempt to fly the Tello!
 
-If all is OK then you can launch the Tello from the flight controller.  In the default configuration the following joystick controls are available...
-* Triangle - Take Off
-* Cross (X) - Land
-* Circle - Panic - Stop all movement
-* Throttle - Move Up/Down - centre is steady, forward to go up, back to do down
-* Left Twist - Rotate drone left/right
-* Right Joystick - Conventional movement control, twist not currently used
-* L1 - Bounce (toggle)
-* L2 - Palm Land
+Use the `-joyhelp` option to see the joystick control mappings.
 
-Use the `-keyhelp` option to see the keyboard control mapping.
+Use the `-keyhelp` option to see the keyboard control mappings.  Be aware that in keyboard mode Tello motion continues until you
+counteract it, or stop the Tello with the space bar.
 
-N.B. For keyboard control to work the window where you started tello-desktop must have focus.
+N.B. For keyboard control to work the Tello Desktop window must have focus.
 
 Once you have landed the drone, stop the program with Ctrl-C, some errors will appear - this is normal.
