@@ -88,7 +88,7 @@ const (
 	winTitle                                = "Tello Desktop"
 	winWidth, winHeight                     = 800, 600
 	winUpdatePeriod                         = 333 * time.Millisecond
-	fontPath                                = "./assets/Inconsolata-Bold.ttf"
+	fontPath                                = "../../assets/Inconsolata-Bold.ttf"
 	bigFontSize, medFontSize, smallFontSize = 32, 24, 12
 )
 

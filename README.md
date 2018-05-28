@@ -17,6 +17,12 @@ Only tested on GNU/Linux - it almost certainly won't work as-is on other platfor
 N.B. This app may use an in-development version of the Gobot package.
 Any released versions should build with a contemporary release of Gobot.
 
+## Build
+For the moment you will need to clone gobot from github and checkout the DEV branch.
+Then, in the cmd/gobot directory build the binary with this command...
+``go build -o tello-desktop``
+Before attempting to run the app you must have mplayer installed.
+
 ## Usage
 * Centre the throttle control at the mid-position if using a flight controller
 * Turn on the Tello
