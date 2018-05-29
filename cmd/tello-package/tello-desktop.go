@@ -390,21 +390,21 @@ func main() {
 				// case bounceKey:
 				// 	drone.Bounce()
 			case moveLeftKey:
-				drone.UpdateSticks(tello.StickMessage{Rx: -keyMoveIncr, Ry: 0, Lx: 0, Ly: 0, Throttle: 0})
+				drone.Left(25)
 			case moveRightKey:
-				drone.UpdateSticks(tello.StickMessage{Rx: keyMoveIncr, Ry: 0, Lx: 0, Ly: 0, Throttle: 0})
+				drone.Right(25)
 			case moveFwdKey:
-				drone.UpdateSticks(tello.StickMessage{Rx: 0, Ry: keyMoveIncr, Lx: 0, Ly: 0, Throttle: 0})
+				drone.Forward(25)
 			case moveBkKey:
-				drone.UpdateSticks(tello.StickMessage{Rx: 0, Ry: -keyMoveIncr, Lx: 0, Ly: 0, Throttle: 0})
+				drone.Backward(25)
 			case moveUpKey:
-				drone.UpdateSticks(tello.StickMessage{Rx: 0, Ry: 0, Lx: 0, Ly: keyMoveIncr, Throttle: 0})
+				drone.Up(50)
 			case moveDownKey:
-				drone.UpdateSticks(tello.StickMessage{Rx: 0, Ry: 0, Lx: 0, Ly: -keyMoveIncr, Throttle: 0})
+				drone.Down(50)
 			case turnLeftKey:
-				drone.UpdateSticks(tello.StickMessage{Rx: 0, Ry: 0, Lx: -keyMoveIncr, Ly: 0, Throttle: 0})
+				drone.TurnLeft(50)
 			case turnRightKey:
-				drone.UpdateSticks(tello.StickMessage{Rx: 0, Ry: 0, Lx: keyMoveIncr, Ly: 0, Throttle: 0})
+				drone.TurnRight(50)
 			case quitKey, sdl.K_ESCAPE:
 				exitNicely()
 			case helpKey:
@@ -465,7 +465,7 @@ func updateWindow() {
 	renderTextAt("Steve's Tello Desktop", bigFont, 155, 5)
 	renderTextAt(time.Now().Format(time.RFC1123), medFont, 150, 50)
 	flightDataMu.RLock()
-	if drone.ControlConnected() {
+	if !drone.ControlConnected() {
 		renderTextAt("No flight data available", bigFont, 100, 200)
 		flightDataMu.RUnlock()
 	} else {
@@ -475,13 +475,12 @@ func updateWindow() {
 		ls := fmt.Sprintf("Side: %d m/s", flightData.EastSpeed)
 		ds := math.Sqrt(float64(flightData.NorthSpeed*flightData.NorthSpeed) + float64(flightData.EastSpeed*flightData.EastSpeed))
 		dstr := fmt.Sprintf("Derived: %.1f m/s", ds)
-		loc := fmt.Sprintf("Hover: %c, Open: %c, Sky: %c, Ground: %c",
+		loc := fmt.Sprintf("Flying: %c, Hover: %c, Ground: %c",
+			boolToYN(flightData.Flying),
 			boolToYN(flightData.DroneHover),
-			boolToYN(flightData.EmOpen),
-			boolToYN(flightData.EmSky),
-			boolToYN(flightData.EmGround))
-		bp := fmt.Sprintf("Battery: %d%%", flightData.BatteryPercentage)
-		ftr := fmt.Sprintf("Remaining Flight Time: %ds", flightData.DroneFlyTimeLeft)
+			boolToYN(flightData.OnGround))
+		bp := fmt.Sprintf("Battery: %d%%  Over Temp: %c", flightData.BatteryPercentage, boolToYN(flightData.OverTemp))
+		ftr := fmt.Sprintf("Remaining - Flight Time: %ds, Battery: %d", flightData.DroneFlyTimeLeft, flightData.DroneFlyTimeLeft)
 		ws := fmt.Sprintf("WiFi - Strength: %d Interference: %d", flightData.WifiStrength, flightData.WifiInterference)
 		msg := flightMsg
 
@@ -494,9 +493,9 @@ func updateWindow() {
 		renderTextAt(ls, medFont, 290, 180)
 		renderTextAt(dstr, medFont, 460, 180)
 		renderTextAt(loc, medFont, 20, 240)
-		renderTextAt(ws, medFont, 20, 460)
-		renderTextAt(bp, medFont, 20, 500)
-		renderTextAt(ftr, medFont, 300, 500)
+		renderTextAt(ws, medFont, 20, 360)
+		renderTextAt(bp, medFont, 20, 400)
+		renderTextAt(ftr, medFont, 20, 440)
 		if msg != "" {
 			renderTextAt(flightMsg, medFont, 20, 550)
 		}
@@ -519,10 +518,10 @@ func renderTextAt(what string, font *ttf.Font, x int32, y int32) {
 
 func exitNicely() {
 
-	window.Destroy()
-	bigFont.Close()
-	medFont.Close()
-	smallFont.Close()
+	// window.Destroy()
+	// bigFont.Close()
+	// medFont.Close()
+	// smallFont.Close()
 	sdl.Quit()
 	os.Exit(0)
 }
