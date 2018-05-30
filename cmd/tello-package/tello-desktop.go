@@ -27,7 +27,7 @@ import (
 	"log"
 	"math"
 	"os"
-	//"os/exec"
+	"os/exec"
 	"os/signal"
 	"sync"
 	"syscall"
@@ -191,26 +191,49 @@ func main() {
 		log.Fatalf("Tello ControlConnectDefault() failed with error %v", err)
 	}
 
+	err = drone.VideoConnectDefault()
+	if err != nil {
+		log.Fatalf("Tello VideoConnectDefault() failed with error %v", err)
+	}
+
 	// start external mplayer instance...
 	// the -vo X11 parm allows it to run nicely inside a virtual machine
 	// setting the FPS to 60 seems to produce smoother video
-	// player := exec.Command("mplayer", "-nosound", "-vo", "x11", "-fps", "60", "-")
+	player := exec.Command("mplayer", "-nosound", "-fps", "60", "-")
 	// //player := exec.Command("ffplay", "-framedrop", "-an", "-i", "pipe:0")
-	// playerIn, _ := player.StdinPipe()
-	// if err := player.Start(); err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
+	playerIn, err := player.StdinPipe()
+	if err != nil {
+		log.Fatalf("Unable to get STDIN for mplayer %v", err)
+	}
+	if err := player.Start(); err != nil {
+		log.Fatalf("Unable to start mplayer - %v", err)
+		return
+	}
 
-	// // start video feed when drone connects
-	// drone.On(tello.ConnectedEvent, func(data interface{}) {
-	// 	fmt.Println("Connected")
-	// 	drone.StartVideo()
-	// 	drone.SetVideoEncoderRate(2)
-	// 	gobot.Every(500*time.Millisecond, func() {
-	// 		drone.StartVideo()
-	// 	})
-	// })
+	_ = playerIn
+	// start video feed when drone connects
+	drone.StartVideo()
+	go func() {
+		for {
+			drone.StartVideo()
+			log.Println("StartVideo() called in loop")
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
+
+	//_ = playerIn
+	go func() {
+		for {
+			vbuf := <-drone.VideoChan
+			_, err := playerIn.Write(vbuf)
+			if err != nil {
+				log.Fatalf("Error writing to mplayer %v\n", err)
+			}
+			//log.Println("Wrote a v buf")
+		}
+	}()
+
+	//drone.SetVideoBitrate(tello.VbrAuto)
 
 	// // send each video frame recieved to mplayer
 	// drone.On(tello.VideoFrameEvent, func(data interface{}) {
@@ -220,20 +243,8 @@ func main() {
 	// 	}
 	// })
 
-	// display some events on console
-	// drone.On(tello.TakeoffEvent, func(data interface{}) {
-	// 	flightDataMu.Lock()
-	// 	flightMsg = "Taking Off"
-	// 	flightDataMu.Unlock()
-	// })
-	// drone.On(tello.LandingEvent, func(data interface{}) {
-	// 	flightDataMu.Lock()
-	// 	flightMsg = "Landing"
-	// 	flightDataMu.Unlock()
-	// })
-	//drone.On(tello.LightStrengthEvent, func(data interface{}) { fmt.Println("Light Strength Event") })
-	// subscribe to FlightData events and askfor updates every 100ms
-	fdChan, _ := drone.StreamFlightData(false, 100)
+	// subscribe to FlightData events and askfor updates every 50ms
+	fdChan, _ := drone.StreamFlightData(false, 50)
 	go func() {
 		for {
 			tmpFD := <-fdChan
@@ -248,7 +259,7 @@ func main() {
 			flightDataMu.Unlock()
 		}
 	}()
-
+	log.Println("Checkpoint 1")
 	// // joystick button presses
 	// stick.On(takeOffCtrl, func(data interface{}) {
 	// 	drone.TakeOff()
@@ -368,14 +379,18 @@ func main() {
 	// 	}
 	// })
 
-	//gobot.Every(winUpdatePeriod, func() { updateWindow() })
 	go func() {
 		for {
 			updateWindow()
 			time.Sleep(winUpdatePeriod)
 		}
 	}()
+	log.Println("Checkpoint 1a")
 
+	drone.SetVideoBitrate(tello.Vbr1M5)
+	log.Println("Checkpoint 2")
+	go sdlEventListener()
+	log.Println("Checkpoint 3")
 	if useKeyboard {
 		for key := range keyChan {
 			switch key.Sym {
@@ -412,21 +427,7 @@ func main() {
 			}
 		}
 	}
-
-	// if useKeyboard {
-	// 	robot = gobot.NewRobot("tello",
-	// 		[]gobot.Connection{},
-	// 		[]gobot.Device{drone},
-	// 		work,
-	// 	)
-	// } else {
-	// 	robot = gobot.NewRobot("tello",
-	// 		[]gobot.Connection{joystickAdaptor},
-	// 		[]gobot.Device{drone, stick},
-	// 		work,
-	// 	)
-	// }
-
+	log.Println("Checkpoint 4")
 }
 
 func setupWindow() {
@@ -456,7 +457,7 @@ func setupWindow() {
 	renderTextAt("Hello, Tello!", bigFont, 200, 200)
 	window.UpdateSurface()
 
-	go sdlEventListener()
+	//go sdlEventListener()
 }
 
 func updateWindow() {
@@ -475,10 +476,11 @@ func updateWindow() {
 		ls := fmt.Sprintf("Side: %d m/s", flightData.EastSpeed)
 		ds := math.Sqrt(float64(flightData.NorthSpeed*flightData.NorthSpeed) + float64(flightData.EastSpeed*flightData.EastSpeed))
 		dstr := fmt.Sprintf("Derived: %.1f m/s", ds)
-		loc := fmt.Sprintf("Flying: %c, Hover: %c, Ground: %c",
+		loc := fmt.Sprintf("Flying: %c, Hover: %c, Ground: %c, Windy: %c",
 			boolToYN(flightData.Flying),
 			boolToYN(flightData.DroneHover),
-			boolToYN(flightData.OnGround))
+			boolToYN(flightData.OnGround),
+			boolToYN(flightData.WindState))
 		bp := fmt.Sprintf("Battery: %d%%  Over Temp: %c", flightData.BatteryPercentage, boolToYN(flightData.OverTemp))
 		ftr := fmt.Sprintf("Remaining - Flight Time: %ds, Battery: %d", flightData.DroneFlyTimeLeft, flightData.DroneFlyTimeLeft)
 		ws := fmt.Sprintf("WiFi - Strength: %d Interference: %d", flightData.WifiStrength, flightData.WifiInterference)
