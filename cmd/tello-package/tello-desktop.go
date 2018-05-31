@@ -70,17 +70,17 @@ const (
 const keyMoveIncr = 5000
 
 // joystick control mapping
-// const (
-// 	takeOffCtrl    = joystick.TrianglePress
-// 	landCtrl       = joystick.XPress
-// 	stopCtrl       = joystick.CirclePress
-// 	moveLRCtrl     = joystick.RightX
-// 	moveFwdBkCtrl  = joystick.RightY
-// 	moveUpDownCtrl = joystick.LeftY
-// 	turnLRCtrl     = joystick.LeftX
-// 	bounceCtrl     = joystick.L1Press
-// 	palmLandCtrl   = joystick.L2Press
-// )
+const (
+	//takeOffCtrl    = joystick.TrianglePress
+	//landCtrl       = joystick.XPress
+	//stopCtrl       = joystick.CirclePress
+	moveLRCtrl     = 3 // joystick.RightX
+	moveFwdBkCtrl  = 4 // joystick.RightY
+	moveUpDownCtrl = 1 // joystick.LeftY
+	turnLRCtrl     = 0 // joystick.LeftX
+	//bounceCtrl     = joystick.L1Press
+	//palmLandCtrl   = joystick.L2Press
+)
 
 const (
 	winTitle                                = "Tello Desktop"
@@ -101,6 +101,8 @@ var (
 	drone       tello.Tello
 	useKeyboard bool // if this is set we use keyboard input, otherwise joystick
 	keyChan     chan sdl.Keysym
+	sticks      tello.StickMessage
+	joy         *sdl.Joystick
 	goLeft, goRight, goFwd, goBack,
 	goUp, goDown, clockwise, antiClockwise int
 	moveMu       sync.RWMutex
@@ -183,6 +185,18 @@ func main() {
 
 	setupWindow()
 
+	j := sdl.NumJoysticks()
+	log.Printf("Number of Joysticks detected: %d\n", j)
+	h, _ := sdl.NumHaptics()
+	log.Printf("Number of haptics controllers %d\n", h)
+	if j > 0 {
+		joy = sdl.JoystickOpen(0)
+		if joy == nil {
+			log.Println("Error opening connection to joystick")
+			j = 0
+		}
+		//stickChan, _ = drone.StartStickListener()
+	}
 	//joystickAdaptor := joystick.NewAdaptor()
 	//stick := joystick.NewDriver(joystickAdaptor, *controlFlag)
 
@@ -200,7 +214,7 @@ func main() {
 	// the -vo X11 parm allows it to run nicely inside a virtual machine
 	// setting the FPS to 60 seems to produce smoother video
 	player := exec.Command("mplayer", "-nosound", "-fps", "60", "-")
-	// //player := exec.Command("ffplay", "-framedrop", "-an", "-i", "pipe:0")
+
 	playerIn, err := player.StdinPipe()
 	if err != nil {
 		log.Fatalf("Unable to get STDIN for mplayer %v", err)
@@ -216,7 +230,6 @@ func main() {
 	go func() {
 		for {
 			drone.StartVideo()
-			log.Println("StartVideo() called in loop")
 			time.Sleep(500 * time.Millisecond)
 		}
 	}()
@@ -232,16 +245,6 @@ func main() {
 			//log.Println("Wrote a v buf")
 		}
 	}()
-
-	//drone.SetVideoBitrate(tello.VbrAuto)
-
-	// // send each video frame recieved to mplayer
-	// drone.On(tello.VideoFrameEvent, func(data interface{}) {
-	// 	pkt := data.([]byte)
-	// 	if _, err := playerIn.Write(pkt); err != nil {
-	// 		fmt.Println(err)
-	// 	}
-	// })
 
 	// subscribe to FlightData events and askfor updates every 50ms
 	fdChan, _ := drone.StreamFlightData(false, 50)
@@ -291,92 +294,6 @@ func main() {
 	// stick.On(palmLandCtrl, func(data interface{}) {
 	// 	fmt.Println("Palm Landing")
 	// 	drone.PalmLand()
-	// })
-
-	// // joystick stick movements
-	// // move left/right
-	// stick.On(moveLRCtrl, func(data interface{}) {
-	// 	js16 := int(data.(int16))
-	// 	moveMu.Lock()
-	// 	defer moveMu.Unlock()
-	// 	switch {
-	// 	case js16 < 0:
-	// 		goLeft = js16 / -328
-	// 		drone.Left(goLeft)
-	// 		fmt.Printf("GoLeft set to %d from raw data %d\n", goLeft, js16)
-	// 	case js16 > 0:
-	// 		goRight = js16 / 328
-	// 		drone.Right(goRight)
-	// 		fmt.Printf("GoRight set to %d from raw data %d\n", goRight, js16)
-	// 	default:
-	// 		goLeft, goRight = 0, 0
-	// 		drone.Left(0)
-	// 		drone.Right(0)
-	// 		fmt.Println("GoLeft & GoRight set to 0")
-	// 	}
-	// })
-	// // move forward/backward
-	// stick.On(moveFwdBkCtrl, func(data interface{}) {
-	// 	js16 := int(data.(int16))
-	// 	moveMu.Lock()
-	// 	defer moveMu.Unlock()
-	// 	switch {
-	// 	case js16 > 0:
-	// 		goBack = js16 / 328
-	// 		drone.Backward(goBack)
-	// 		fmt.Printf("GoBack set to %d from raw data %d\n", goBack, js16)
-	// 	case js16 < 0:
-	// 		goFwd = js16 / -328
-	// 		drone.Forward(goFwd)
-	// 		fmt.Printf("GoFwd set to %d from raw data %d\n", goFwd, js16)
-	// 	default:
-	// 		goBack, goFwd = 0, 0
-	// 		drone.Backward(0)
-	// 		drone.Forward(0)
-	// 		fmt.Println("GoBack & GoFwdset to 0")
-	// 	}
-	// })
-	// // move up/down
-	// stick.On(moveUpDownCtrl, func(data interface{}) {
-	// 	js16 := int(data.(int16))
-	// 	moveMu.Lock()
-	// 	defer moveMu.Unlock()
-	// 	switch {
-	// 	case js16 > 0:
-	// 		goDown = js16 / 328
-	// 		drone.Down(goDown)
-	// 		fmt.Printf("GoDown set to %d from raw data %d\n", goDown, js16)
-	// 	case js16 < 0:
-	// 		goUp = js16 / -328
-	// 		drone.Up(goUp)
-	// 		fmt.Printf("GoUp set to %d from raw data %d\n", goUp, js16)
-	// 	default:
-	// 		goDown, goUp = 0, 0
-	// 		drone.Down(0)
-	// 		drone.Up(0)
-	// 		fmt.Println("GoBack & GoFwd set to 0")
-	// 	}
-	// })
-	// // turn left/right
-	// stick.On(turnLRCtrl, func(data interface{}) {
-	// 	js16 := int(data.(int16))
-	// 	moveMu.Lock()
-	// 	defer moveMu.Unlock()
-	// 	switch {
-	// 	case js16 < 0:
-	// 		antiClockwise = js16 / -328
-	// 		drone.CounterClockwise(antiClockwise)
-	// 		fmt.Printf("antiClockwise set to %d from raw data %d\n", antiClockwise, js16)
-	// 	case js16 > 0:
-	// 		clockwise = js16 / 328
-	// 		drone.Clockwise(clockwise)
-	// 		fmt.Printf("clockwise set to %d from raw data %d\n", clockwise, js16)
-	// 	default:
-	// 		antiClockwise, clockwise = 0, 0
-	// 		drone.CounterClockwise(0)
-	// 		drone.Clockwise(0)
-	// 		fmt.Println("clockwise & antiClockwise set to 0")
-	// 	}
 	// })
 
 	go func() {
@@ -544,6 +461,9 @@ func sdlEventListener() {
 			fmt.Println("Window Quit event")
 			exitNicely()
 
+		case *sdl.JoyAxisEvent:
+			handleJoyAxisEvent(event.(*sdl.JoyAxisEvent))
+
 		case *sdl.KeyboardEvent:
 			fmt.Println("Keyboard Event")
 			// only send key presses for now
@@ -552,4 +472,21 @@ func sdlEventListener() {
 			}
 		}
 	}
+}
+
+func handleJoyAxisEvent(ev *sdl.JoyAxisEvent) {
+	switch ev.Axis {
+	case turnLRCtrl: // lx
+		sticks.Lx = ev.Value
+	case moveUpDownCtrl: // ly
+		sticks.Ly = -ev.Value
+	case 2: // l2
+	case moveLRCtrl: // rx
+		sticks.Rx = ev.Value
+	case moveFwdBkCtrl: //
+		log.Printf("Got js RY value: %d\n", ev.Value)
+		sticks.Ry = -ev.Value
+	case 5: // r2
+	}
+	drone.UpdateSticks(sticks)
 }
