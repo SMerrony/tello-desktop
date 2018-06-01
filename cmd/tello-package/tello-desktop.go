@@ -57,6 +57,7 @@ const (
 	moveLeftKey  = sdl.K_LEFT
 	moveRightKey = sdl.K_RIGHT
 	moveFwdKey   = sdl.K_UP
+	throwKey     = sdl.K_o
 	moveBkKey    = sdl.K_DOWN
 	turnLeftKey  = sdl.K_a
 	turnRightKey = sdl.K_d
@@ -71,15 +72,15 @@ const keyMoveIncr = 5000
 
 // joystick control mapping
 const (
-	//takeOffCtrl    = joystick.TrianglePress
-	//landCtrl       = joystick.XPress
-	//stopCtrl       = joystick.CirclePress
-	moveLRCtrl     = 3 // joystick.RightX
-	moveFwdBkCtrl  = 4 // joystick.RightY
-	moveUpDownCtrl = 1 // joystick.LeftY
-	turnLRCtrl     = 0 // joystick.LeftX
-	//bounceCtrl     = joystick.L1Press
-	//palmLandCtrl   = joystick.L2Press
+	takeOffButton  = 2 // joystick.TrianglePress
+	landButton     = 0 // joystick.XPress
+	stopButton     = 1 //joystick.CirclePress
+	moveLRAxis     = 3 // joystick.RightX
+	moveFwdBkAxis  = 4 // joystick.RightY
+	moveUpDownAxis = 1 // joystick.LeftY
+	turnLRAxis     = 0 // joystick.LeftX
+	bounceButton   = 4 // joystick.L1Press
+	palmLandButton = 6 // joystick.L2Press
 )
 
 const (
@@ -92,17 +93,14 @@ const (
 
 // program flags
 var (
-	controlFlag = flag.String("control", "keyboard", "Gobot controller <keyboard|dualshock4|tflightHotasX")
 	joyHelpFlag = flag.Bool("joyhelp", false, "Print help for joystick control mapping and exit")
 	keyHelpFlag = flag.Bool("keyhelp", false, "Print help for keyboard control mapping and exit")
 )
 
 var (
-	drone       tello.Tello
-	useKeyboard bool // if this is set we use keyboard input, otherwise joystick
-	keyChan     chan sdl.Keysym
-	sticks      tello.StickMessage
-	joy         *sdl.Joystick
+	drone  tello.Tello
+	sticks tello.StickMessage
+	joy    *sdl.Joystick
 	goLeft, goRight, goFwd, goBack,
 	goUp, goDown, clockwise, antiClockwise int
 	moveMu       sync.RWMutex
@@ -127,6 +125,7 @@ func printKeyHelp() {
 W|A|S|D       W: Up, S: Down, A: Turn Left, D: Turn Right
 <SPACE>       Hover (stop all movement)
 T             Takeoff
+O             Throw Takeoff
 L             Land
 P             Palm Land
 B             Bounce (on/off)
@@ -168,37 +167,19 @@ func main() {
 		exitNicely()
 	}()
 
-	switch *controlFlag {
-	case keyboardCtl:
-		fmt.Println("Setting up Keyboard as controller")
-		useKeyboard = true
-		keyChan = make(chan sdl.Keysym, 3)
-	case dualshock4Ctl:
-		fmt.Println("Setting up DualShock4 controller")
-		useKeyboard = false
-	case tflightHotasXCtl:
-		fmt.Println("Setting up T-Flight HOTAS-X controller")
-		useKeyboard = false
-	default:
-		log.Fatalf("Unknown joystick type %s", *controlFlag)
-	}
-
 	setupWindow()
 
 	j := sdl.NumJoysticks()
 	log.Printf("Number of Joysticks detected: %d\n", j)
-	h, _ := sdl.NumHaptics()
-	log.Printf("Number of haptics controllers %d\n", h)
 	if j > 0 {
 		joy = sdl.JoystickOpen(0)
 		if joy == nil {
 			log.Println("Error opening connection to joystick")
 			j = 0
+		} else {
+			log.Printf("Connected to joystick: %s\n", joy.Name())
 		}
-		//stickChan, _ = drone.StartStickListener()
 	}
-	//joystickAdaptor := joystick.NewAdaptor()
-	//stick := joystick.NewDriver(joystickAdaptor, *controlFlag)
 
 	err := drone.ControlConnectDefault()
 	if err != nil {
@@ -234,7 +215,6 @@ func main() {
 		}
 	}()
 
-	//_ = playerIn
 	go func() {
 		for {
 			vbuf := <-drone.VideoChan
@@ -242,7 +222,6 @@ func main() {
 			if err != nil {
 				log.Fatalf("Error writing to mplayer %v\n", err)
 			}
-			//log.Println("Wrote a v buf")
 		}
 	}()
 
@@ -263,38 +242,6 @@ func main() {
 		}
 	}()
 	log.Println("Checkpoint 1")
-	// // joystick button presses
-	// stick.On(takeOffCtrl, func(data interface{}) {
-	// 	drone.TakeOff()
-	// 	fmt.Println("Taking off")
-	// })
-
-	// stick.On(landCtrl, func(data interface{}) {
-	// 	drone.Land()
-	// 	fmt.Println("Landing")
-	// })
-
-	// stick.On(stopCtrl, func(data interface{}) {
-	// 	fmt.Println("Stopping (Hover)")
-	// 	drone.Left(0)
-	// 	drone.Right(0)
-	// 	drone.Forward(0)
-	// 	drone.Backward(0)
-	// 	drone.Up(0)
-	// 	drone.Down(0)
-	// 	drone.Clockwise(0)
-	// 	drone.CounterClockwise(0)
-	// })
-
-	// stick.On(bounceCtrl, func(data interface{}) {
-	// 	fmt.Println("Bounce start/stop")
-	// 	drone.Bounce()
-	// })
-
-	// stick.On(palmLandCtrl, func(data interface{}) {
-	// 	fmt.Println("Palm Landing")
-	// 	drone.PalmLand()
-	// })
 
 	go func() {
 		for {
@@ -304,47 +251,10 @@ func main() {
 	}()
 	log.Println("Checkpoint 1a")
 
-	drone.SetVideoBitrate(tello.Vbr1M5)
+	drone.SetVideoBitrate(tello.VbrAuto)
 	log.Println("Checkpoint 2")
-	go sdlEventListener()
+	sdlEventListener()
 	log.Println("Checkpoint 3")
-	if useKeyboard {
-		for key := range keyChan {
-			switch key.Sym {
-			case takeOffKey:
-				drone.TakeOff()
-			case landKey:
-				drone.Land()
-			// case palmlandKey:
-			// 	drone.PalmLand()
-			case panicKey:
-				drone.Hover()
-				// case bounceKey:
-				// 	drone.Bounce()
-			case moveLeftKey:
-				drone.Left(25)
-			case moveRightKey:
-				drone.Right(25)
-			case moveFwdKey:
-				drone.Forward(25)
-			case moveBkKey:
-				drone.Backward(25)
-			case moveUpKey:
-				drone.Up(50)
-			case moveDownKey:
-				drone.Down(50)
-			case turnLeftKey:
-				drone.TurnLeft(50)
-			case turnRightKey:
-				drone.TurnRight(50)
-			case quitKey, sdl.K_ESCAPE:
-				exitNicely()
-			case helpKey:
-				printKeyHelp()
-			}
-		}
-	}
-	log.Println("Checkpoint 4")
 }
 
 func setupWindow() {
@@ -373,8 +283,6 @@ func setupWindow() {
 	surface.FillRect(nil, 0)
 	renderTextAt("Hello, Tello!", bigFont, 200, 200)
 	window.UpdateSurface()
-
-	//go sdlEventListener()
 }
 
 func updateWindow() {
@@ -464,29 +372,88 @@ func sdlEventListener() {
 		case *sdl.JoyAxisEvent:
 			handleJoyAxisEvent(event.(*sdl.JoyAxisEvent))
 
+		case *sdl.JoyButtonEvent:
+			// only send button presses for now
+			if event.(*sdl.JoyButtonEvent).Type == sdl.JOYBUTTONDOWN {
+				handleJoyButtonEvent(event.(*sdl.JoyButtonEvent))
+			}
+
 		case *sdl.KeyboardEvent:
 			fmt.Println("Keyboard Event")
 			// only send key presses for now
 			if event.(*sdl.KeyboardEvent).Type == sdl.KEYDOWN {
-				keyChan <- event.(*sdl.KeyboardEvent).Keysym
+				handleKeyDownEvent(event.(*sdl.KeyboardEvent).Keysym)
 			}
 		}
 	}
 }
 
+func handleKeyDownEvent(key sdl.Keysym) {
+	switch key.Sym {
+	case takeOffKey:
+		drone.TakeOff()
+	case landKey:
+		drone.Land()
+	case palmlandKey:
+		drone.PalmLand()
+	case panicKey:
+		drone.Hover()
+	case bounceKey:
+		drone.Bounce()
+	case moveLeftKey:
+		drone.Left(25)
+	case moveRightKey:
+		drone.Right(25)
+	case moveFwdKey:
+		drone.Forward(25)
+	case moveBkKey:
+		drone.Backward(25)
+	case moveUpKey:
+		drone.Up(50)
+	case moveDownKey:
+		drone.Down(50)
+	case throwKey:
+		drone.ThrowTakeOff()
+	case turnLeftKey:
+		drone.TurnLeft(50)
+	case turnRightKey:
+		drone.TurnRight(50)
+	case quitKey, sdl.K_ESCAPE:
+		exitNicely()
+	case helpKey:
+		printKeyHelp()
+	}
+}
+
 func handleJoyAxisEvent(ev *sdl.JoyAxisEvent) {
 	switch ev.Axis {
-	case turnLRCtrl: // lx
+	case turnLRAxis: // lx
 		sticks.Lx = ev.Value
-	case moveUpDownCtrl: // ly
+	case moveUpDownAxis: // ly
 		sticks.Ly = -ev.Value
 	case 2: // l2
-	case moveLRCtrl: // rx
+	case moveLRAxis: // rx
 		sticks.Rx = ev.Value
-	case moveFwdBkCtrl: //
+	case moveFwdBkAxis: //
 		log.Printf("Got js RY value: %d\n", ev.Value)
 		sticks.Ry = -ev.Value
 	case 5: // r2
 	}
 	drone.UpdateSticks(sticks)
+}
+
+func handleJoyButtonEvent(ev *sdl.JoyButtonEvent) {
+	switch ev.Button {
+	case landButton:
+		drone.Land()
+	case stopButton:
+		drone.Hover()
+	case takeOffButton:
+		drone.TakeOff()
+	case bounceButton:
+		drone.Bounce()
+	case palmLandButton:
+		drone.PalmLand()
+	}
+
 }
