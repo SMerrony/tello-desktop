@@ -64,6 +64,7 @@ const (
 	moveUpKey    = sdl.K_w
 	moveDownKey  = sdl.K_s
 	bounceKey    = sdl.K_b
+	modeKey      = sdl.K_m
 	quitKey      = sdl.K_q
 	helpKey      = sdl.K_h
 )
@@ -103,6 +104,7 @@ var (
 	joy    *sdl.Joystick
 	goLeft, goRight, goFwd, goBack,
 	goUp, goDown, clockwise, antiClockwise int
+	sportsMode   bool
 	moveMu       sync.RWMutex
 	flightData   tello.FlightData
 	flightMsg    = "Idle"
@@ -129,6 +131,7 @@ O             Throw Takeoff
 L             Land
 P             Palm Land
 B             Bounce (on/off)
+M             Mode - Toggle Sports(Fast) Mode
 Q             Quit
 H             Print Help
 `)
@@ -400,6 +403,9 @@ func handleKeyDownEvent(key sdl.Keysym) {
 		drone.Hover()
 	case bounceKey:
 		drone.Bounce()
+	case modeKey:
+		sportsMode = !sportsMode
+		drone.SetSportsMode(sportsMode)
 	case moveLeftKey:
 		drone.Left(25)
 	case moveRightKey:
@@ -435,7 +441,7 @@ func handleJoyAxisEvent(ev *sdl.JoyAxisEvent) {
 	case moveLRAxis: // rx
 		sticks.Rx = ev.Value
 	case moveFwdBkAxis: //
-		log.Printf("Got js RY value: %d\n", ev.Value)
+		// log.Printf("Got js RY value: %d\n", ev.Value)
 		sticks.Ry = -ev.Value
 	case 5: // r2
 	}
