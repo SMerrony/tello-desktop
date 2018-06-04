@@ -50,28 +50,32 @@ const (
 
 // keyboard control mapping
 const (
-	takeOffKey   = sdl.K_t
+	bounceKey    = sdl.K_b
+	flipFwdKey   = sdl.K_1
+	flipBkwdKey  = sdl.K_2
+	flipLeftKey  = sdl.K_3
+	flipRightKey = sdl.K_4
+	helpKey      = sdl.K_h
 	landKey      = sdl.K_l
-	palmlandKey  = sdl.K_p
-	panicKey     = sdl.K_SPACE
+	modeKey      = sdl.K_m
+	moveBkKey    = sdl.K_DOWN
+	moveDownKey  = sdl.K_s
+	moveFwdKey   = sdl.K_UP
 	moveLeftKey  = sdl.K_LEFT
 	moveRightKey = sdl.K_RIGHT
-	moveFwdKey   = sdl.K_UP
+	moveUpKey    = sdl.K_w
+	palmlandKey  = sdl.K_p
+	panicKey     = sdl.K_SPACE
+	quitKey      = sdl.K_q
+	takeOffKey   = sdl.K_t
 	throwKey     = sdl.K_o
-	moveBkKey    = sdl.K_DOWN
 	turnLeftKey  = sdl.K_a
 	turnRightKey = sdl.K_d
-	moveUpKey    = sdl.K_w
-	moveDownKey  = sdl.K_s
-	bounceKey    = sdl.K_b
-	modeKey      = sdl.K_m
-	quitKey      = sdl.K_q
-	helpKey      = sdl.K_h
 )
 
 const keyMoveIncr = 5000
 
-// joystick control mapping
+// joystick control mapping (ourname = button#)
 const (
 	takeOffButton  = 2 // joystick.TrianglePress
 	landButton     = 0 // joystick.XPress
@@ -131,6 +135,7 @@ O             Throw Takeoff
 L             Land
 P             Palm Land
 B             Bounce (on/off)
+1|2|3|4       Flip Forwards/Backwards/Left/Right
 M             Mode - Toggle Sports(Fast) Mode
 Q             Quit
 H             Print Help
@@ -403,6 +408,14 @@ func handleKeyDownEvent(key sdl.Keysym) {
 		drone.Hover()
 	case bounceKey:
 		drone.Bounce()
+	case flipFwdKey:
+		drone.ForwardFlip()
+	case flipBkwdKey:
+		drone.BackFlip()
+	case flipLeftKey:
+		drone.LeftFlip()
+	case flipRightKey:
+		drone.RightFlip()
 	case modeKey:
 		sportsMode = !sportsMode
 		drone.SetSportsMode(sportsMode)
