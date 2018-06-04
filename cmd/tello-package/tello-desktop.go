@@ -189,7 +189,7 @@ func main() {
 		log.Fatalf("Tello ControlConnectDefault() failed with error %v", err)
 	}
 
-	err = drone.VideoConnectDefault()
+	videochan, err := drone.VideoConnectDefault()
 	if err != nil {
 		log.Fatalf("Tello VideoConnectDefault() failed with error %v", err)
 	}
@@ -220,7 +220,7 @@ func main() {
 
 	go func() {
 		for {
-			vbuf := <-drone.VideoChan
+			vbuf := <-videochan
 			_, err := playerIn.Write(vbuf)
 			if err != nil {
 				log.Fatalf("Error writing to mplayer %v\n", err)
