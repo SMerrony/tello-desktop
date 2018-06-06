@@ -68,6 +68,7 @@ const (
 	panicKey     = sdl.K_SPACE
 	quitKey      = sdl.K_q
 	takeOffKey   = sdl.K_t
+	takePhotoKey = sdl.K_f
 	throwKey     = sdl.K_o
 	turnLeftKey  = sdl.K_a
 	turnRightKey = sdl.K_d
@@ -103,17 +104,13 @@ var (
 )
 
 var (
-	drone  tello.Tello
-	sticks tello.StickMessage
-	joy    *sdl.Joystick
-	goLeft, goRight, goFwd, goBack,
-	goUp, goDown, clockwise, antiClockwise int
+	drone        tello.Tello
+	sticks       tello.StickMessage
+	joy          *sdl.Joystick
 	sportsMode   bool
-	moveMu       sync.RWMutex
 	flightData   tello.FlightData
 	flightMsg    = "Idle"
 	flightDataMu sync.RWMutex
-	wifiDataMu   sync.RWMutex
 )
 
 var (
@@ -134,6 +131,7 @@ T             Takeoff
 O             Throw Takeoff
 L             Land
 P             Palm Land
+F             Take Picture (Foto)
 B             Bounce (on/off)
 1|2|3|4       Flip Forwards/Backwards/Left/Right
 M             Mode - Toggle Sports(Fast) Mode
@@ -202,7 +200,8 @@ func main() {
 	// start external mplayer instance...
 	// the -vo X11 parm allows it to run nicely inside a virtual machine
 	// setting the FPS to 60 seems to produce smoother video
-	player := exec.Command("mplayer", "-nosound", "-fps", "60", "-")
+	player := exec.Command("mplayer", "-nosound", "-vo", "x11", "-fps", "60", "-")
+	//player := exec.Command("mplayer", "-nosound", "-fps", "60", "-")
 
 	playerIn, err := player.StdinPipe()
 	if err != nil {
@@ -431,6 +430,8 @@ func handleKeyDownEvent(key sdl.Keysym) {
 		drone.Up(50)
 	case moveDownKey:
 		drone.Down(50)
+	case takePhotoKey:
+		drone.TakePicture()
 	case throwKey:
 		drone.ThrowTakeOff()
 	case turnLeftKey:
