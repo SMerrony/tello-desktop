@@ -41,13 +41,6 @@ import (
 
 const telloUDPport = "8890"
 
-// known controllers
-const (
-	keyboardCtl      = "keyboard"
-	dualshock4Ctl    = "dualshock4"
-	tflightHotasXCtl = "tflightHotasX"
-)
-
 // keyboard control mapping
 const (
 	bounceKey    = sdl.K_b
@@ -78,15 +71,16 @@ const keyMoveIncr = 5000
 
 // joystick control mapping (ourname = button#)
 const (
-	takeOffButton  = 2 // joystick.TrianglePress
-	landButton     = 0 // joystick.XPress
-	stopButton     = 1 //joystick.CirclePress
-	moveLRAxis     = 3 // joystick.RightX
-	moveFwdBkAxis  = 4 // joystick.RightY
-	moveUpDownAxis = 1 // joystick.LeftY
-	turnLRAxis     = 0 // joystick.LeftX
-	bounceButton   = 4 // joystick.L1Press
-	palmLandButton = 6 // joystick.L2Press
+	bounceButton    = 4 // joystick.L1Press
+	landButton      = 0 // joystick.XPress
+	moveFwdBkAxis   = 4 // joystick.RightY
+	moveLRAxis      = 3 // joystick.RightX
+	moveUpDownAxis  = 1 // joystick.LeftY
+	palmLandButton  = 6 // joystick.L2Press
+	stopButton      = 1 //joystick.CirclePress
+	takeOffButton   = 2 // joystick.TrianglePress
+	takePhotoButton = 3 // square
+	turnLRAxis      = 0 // joystick.LeftX
 )
 
 const (
@@ -149,6 +143,7 @@ Left Stick   Up/Down/Turn
 Triangle     Takeoff
 X            Land
 Circle       Hover (stop all movement)
+Square       Take Photo
 L1           Bounce (on/off)
 L2           Palm Land
 `)
@@ -351,11 +346,10 @@ func renderTextAt(what string, font *ttf.Font, x int32, y int32) {
 }
 
 func exitNicely() {
-
-	// window.Destroy()
-	// bigFont.Close()
-	// medFont.Close()
-	// smallFont.Close()
+	fmt.Printf("# pix in store: %d\n", drone.NumPics())
+	if drone.NumPics() > 0 {
+		drone.SaveAllPics(fmt.Sprintf("tello_pic_%s", time.Now().Format(time.RFC3339)))
+	}
 	sdl.Quit()
 	os.Exit(0)
 }
@@ -470,6 +464,8 @@ func handleJoyButtonEvent(ev *sdl.JoyButtonEvent) {
 		drone.Hover()
 	case takeOffButton:
 		drone.TakeOff()
+	case takePhotoButton:
+		drone.TakePicture()
 	case bounceButton:
 		drone.Bounce()
 	case palmLandButton:
