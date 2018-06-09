@@ -1,18 +1,20 @@
 # tello-desktop
 A functioning desktop testbed for flying the Ryze Tello drone via various APIs.
 
-Currently there are versions for [Gobot](https://github.com/hybridgroup/gobot) and for [tello](https://github.com/SMerrony/tello).
+Currently there are versions:
+* One using [Gobot](https://github.com/hybridgroup/gobot) in cmd/tello-gobot and 
+* One using [tello](https://github.com/SMerrony/tello) in cmd/tello-package.
 
 _Play with this entirely at your own risk - it's not the author's fault if you lose your drone
 or damage it, or anything else, when using this software._
 
-The Gobot version currently provides 
+Both versions currently provide... 
 * live video via mplayer (must be installed separately)
-* basic control from the keyboard
+* control from the keyboard
 * joystick control via a Dualshock 4 or Thrustmaster T-Flight flight controller
 * flight status window
 
-The tello version also supports picture taking.
+The tello-package version also supports picture taking, flips and a few more flight commands.
 
 Only tested on GNU/Linux - it almost certainly won't work as-is on other platforms.
 
