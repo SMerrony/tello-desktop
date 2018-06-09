@@ -93,6 +93,7 @@ const (
 
 // program flags
 var (
+	x11Flag     = flag.Bool("x11", false, "Use '-vo x11' flag in case mplayer takes over entire window")
 	joyHelpFlag = flag.Bool("joyhelp", false, "Print help for joystick control mapping and exit")
 	keyHelpFlag = flag.Bool("keyhelp", false, "Print help for keyboard control mapping and exit")
 )
@@ -195,8 +196,12 @@ func main() {
 	// start external mplayer instance...
 	// the -vo X11 parm allows it to run nicely inside a virtual machine
 	// setting the FPS to 60 seems to produce smoother video
-	player := exec.Command("mplayer", "-nosound", "-vo", "x11", "-fps", "60", "-")
-	//player := exec.Command("mplayer", "-nosound", "-fps", "60", "-")
+	var player *exec.Cmd
+	if *x11Flag {
+		player = exec.Command("mplayer", "-nosound", "-vo", "x11", "-fps", "60", "-")
+	} else {
+		player = exec.Command("mplayer", "-nosound", "-fps", "60", "-")
+	}
 
 	playerIn, err := player.StdinPipe()
 	if err != nil {
