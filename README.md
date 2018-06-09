@@ -11,8 +11,10 @@ or damage it, or anything else, when using this software._
 Both versions currently provide... 
 * live video via mplayer (must be installed separately)
 * control from the keyboard
-* joystick control via a Dualshock 4 or Thrustmaster T-Flight flight controller
+* control via a Dualshock 4 game controller
 * flight status window
+
+The Gobot version also supports the Thrustmaster T-Flight flight controller.
 
 The tello-package version also supports picture taking, flips and a few more flight commands.
 
@@ -39,6 +41,8 @@ Use the `-joyhelp` option to see the joystick control mappings.
 
 Use the `-keyhelp` option to see the keyboard control mappings.  Be aware that in keyboard mode Tello motion continues until you
 counteract it, or stop the Tello with the space bar.
+
+If you find that mplayer takes over the whole screen (rather than being in its own window), then try the -x11 option which may help.
 
 N.B. To control the Tello the Tello Desktop window must have focus.
 
