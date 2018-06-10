@@ -239,11 +239,39 @@ func main() {
 			tmpFD := <-fdChan
 			flightDataMu.Lock()
 			flightData = tmpFD
+			flightMsg = "FlightMsg:"
 			if flightData.BatteryLow {
-				flightMsg = "Battery Low"
+				flightMsg += "Warning: Battery Low! "
 			}
 			if flightData.BatteryLower {
-				flightMsg = "Battery Lower"
+				flightMsg += "Warning: Battery Lower! "
+			}
+			if flightData.BatteryState {
+				flightMsg += "Warning: BatterySate! "
+			}
+			if flightData.DownVisualState {
+				flightMsg += "Warning: DownVisualState! "
+			}
+			if flightData.GravityState {
+				flightMsg += "Warning: GravityState! "
+			}
+			if flightData.ImuState {
+				flightMsg += "Warning: ImuState! "
+			}
+			if flightData.PressureState {
+				flightMsg += "Warning: PressureState! "
+			}
+			if flightData.WifiInterference != 0 {
+				flightMsg += "Warning: WifiInterference! "
+			}
+			if flightData.FlyMode == 1 && flightData.Flying {
+				flightMsg += "Warning: CanNotLocation! "
+			}
+			if flightData.FlyMode == 12 && flightData.Flying {
+				flightMsg += "Warning: isLanding! "
+			}
+			if flightData.ImuCalibrationState == 2 && flightData.EmOpen {
+				flightMsg += "Warning: IMUError! "
 			}
 			flightDataMu.Unlock()
 		}
@@ -308,11 +336,12 @@ func updateWindow() {
 		ls := fmt.Sprintf("Side: %d m/s", flightData.EastSpeed)
 		ds := math.Sqrt(float64(flightData.NorthSpeed*flightData.NorthSpeed) + float64(flightData.EastSpeed*flightData.EastSpeed))
 		dstr := fmt.Sprintf("Derived: %.1f m/s", ds)
-		loc := fmt.Sprintf("Flying: %c, Hover: %c, Ground: %c, Windy: %c",
+		loc := fmt.Sprintf("Flying: %c, Hover: %c, Ground: %c, Windy: %c, sportsMode: %c",
 			boolToYN(flightData.Flying),
 			boolToYN(flightData.DroneHover),
 			boolToYN(flightData.OnGround),
-			boolToYN(flightData.WindState))
+			boolToYN(flightData.WindState),
+			boolToYN(sportsMode))
 		bp := fmt.Sprintf("Battery: %d%%  Over Temp: %c", flightData.BatteryPercentage, boolToYN(flightData.OverTemp))
 		ftr := fmt.Sprintf("Remaining - Flight Time: %ds, Battery: %d", flightData.DroneFlyTimeLeft, flightData.DroneFlyTimeLeft)
 		ws := fmt.Sprintf("WiFi - Strength: %d Interference: %d", flightData.WifiStrength, flightData.WifiInterference)
@@ -390,7 +419,30 @@ func sdlEventListener() {
 			if event.(*sdl.KeyboardEvent).Type == sdl.KEYDOWN {
 				handleKeyDownEvent(event.(*sdl.KeyboardEvent).Keysym)
 			}
+			if event.(*sdl.KeyboardEvent).Type == sdl.KEYUP {
+				handleKeyUpEvent(event.(*sdl.KeyboardEvent).Keysym)
+			}
 		}
+	}
+}
+func handleKeyUpEvent(key sdl.Keysym) {
+	switch key.Sym {
+	case moveLeftKey:
+		drone.Left(0)
+	case moveRightKey:
+		drone.Right(0)
+	case moveFwdKey:
+		drone.Forward(0)
+	case moveBkKey:
+		drone.Backward(0)
+	case moveUpKey:
+		drone.Up(0)
+	case moveDownKey:
+		drone.Down(0)
+	case turnLeftKey:
+		drone.TurnLeft(0)
+	case turnRightKey:
+		drone.TurnRight(0)
 	}
 }
 
@@ -418,25 +470,25 @@ func handleKeyDownEvent(key sdl.Keysym) {
 		sportsMode = !sportsMode
 		drone.SetSportsMode(sportsMode)
 	case moveLeftKey:
-		drone.Left(25)
+		drone.Left(100)
 	case moveRightKey:
-		drone.Right(25)
+		drone.Right(100)
 	case moveFwdKey:
-		drone.Forward(25)
+		drone.Forward(100)
 	case moveBkKey:
-		drone.Backward(25)
+		drone.Backward(100)
 	case moveUpKey:
-		drone.Up(50)
+		drone.Up(100)
 	case moveDownKey:
-		drone.Down(50)
+		drone.Down(100)
 	case takePhotoKey:
 		drone.TakePicture()
 	case throwKey:
 		drone.ThrowTakeOff()
 	case turnLeftKey:
-		drone.TurnLeft(50)
+		drone.TurnLeft(100)
 	case turnRightKey:
-		drone.TurnRight(50)
+		drone.TurnRight(100)
 	case quitKey, sdl.K_ESCAPE:
 		exitNicely()
 	case helpKey:
