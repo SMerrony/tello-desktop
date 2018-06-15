@@ -1,4 +1,11 @@
 # tello-desktop
+
+TELLO-DESKTOP IS DEPRECATED.  PLEASE CONSIDER [TelloTerm](https://github.com/SMerrony/telloterm) INSTEAD.
+
+Please do not submit issues or PRs for this project.
+
+This was...
+
 A functioning desktop testbed for flying the Ryze Tello drone via various APIs.
 
 Currently there are versions:

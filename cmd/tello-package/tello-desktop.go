@@ -65,6 +65,7 @@ const (
 	throwKey     = sdl.K_o
 	turnLeftKey  = sdl.K_a
 	turnRightKey = sdl.K_d
+	videoModeKey = sdl.K_v
 )
 
 const keyMoveIncr = 5000
@@ -103,6 +104,7 @@ var (
 	sticks       tello.StickMessage
 	joy          *sdl.Joystick
 	sportsMode   bool
+	wideVideo    bool
 	flightData   tello.FlightData
 	flightMsg    = "Idle"
 	flightDataMu sync.RWMutex
@@ -130,6 +132,7 @@ F             Take Picture (Foto)
 B             Bounce (on/off)
 1|2|3|4       Flip Forwards/Backwards/Left/Right
 M             Mode - Toggle Sports(Fast) Mode
+V             Switch Video Mode
 Q             Quit
 H             Print Help
 `)
@@ -212,13 +215,12 @@ func main() {
 		return
 	}
 
-	_ = playerIn
 	// start video feed when drone connects
 	drone.StartVideo()
 	go func() {
 		for {
 			drone.StartVideo()
-			time.Sleep(2000 * time.Millisecond)
+			time.Sleep(time.Second)
 		}
 	}()
 
@@ -242,7 +244,7 @@ func main() {
 			if flightData.BatteryLow {
 				flightMsg = "Battery Low"
 			}
-			if flightData.BatteryLower {
+			if flightData.BatteryCritical {
 				flightMsg = "Battery Lower"
 			}
 			flightDataMu.Unlock()
@@ -258,7 +260,12 @@ func main() {
 	}()
 	log.Println("Checkpoint 1a")
 
-	drone.SetVideoBitrate(tello.VbrAuto)
+	drone.SetVideoBitrate(tello.Vbr4M)
+
+	drone.GetVersion()
+	drone.GetSSID()
+	drone.GetMaxHeight()
+
 	log.Println("Checkpoint 2")
 	sdlEventListener()
 	log.Println("Checkpoint 3")
@@ -385,7 +392,7 @@ func sdlEventListener() {
 			}
 
 		case *sdl.KeyboardEvent:
-			fmt.Println("Keyboard Event")
+			//fmt.Println("Keyboard Event")
 			// only send key presses for now
 			if event.(*sdl.KeyboardEvent).Type == sdl.KEYDOWN {
 				handleKeyDownEvent(event.(*sdl.KeyboardEvent).Keysym)
@@ -404,6 +411,9 @@ func handleKeyDownEvent(key sdl.Keysym) {
 		drone.PalmLand()
 	case panicKey:
 		drone.Hover()
+		drone.SetVideoBitrate(tello.Vbr3M)
+		drone.GetVideoBitrate()
+		//drone.GetAttitude()
 	case bounceKey:
 		drone.Bounce()
 	case flipFwdKey:
@@ -437,6 +447,13 @@ func handleKeyDownEvent(key sdl.Keysym) {
 		drone.TurnLeft(50)
 	case turnRightKey:
 		drone.TurnRight(50)
+	case videoModeKey:
+		if wideVideo {
+			drone.SetVideoNormal()
+		} else {
+			drone.SetVideoWide()
+		}
+		wideVideo = !wideVideo
 	case quitKey, sdl.K_ESCAPE:
 		exitNicely()
 	case helpKey:
